@@ -1,0 +1,270 @@
+@charset "UTF-8";
+#social-wrapper span .title {
+	font-size:3em;
+}
+span .title-red {
+	font-color: red;
+}
+span .title-orange {
+	font-color: orange;
+}
+span .title-green {
+	font-color: green;
+}
+span .title-skyblue {
+	font-color: skyblue;
+}
+span .title-blue {
+	font-color: blue;
+}
+span .title-pupple {
+	font-color: pupple;
+}
+.card-block {
+    font-size: 1em;
+    position: relative;
+    margin: 0;
+    padding: 1em;
+    border: none;
+    border-top: 1px solid rgba(34, 36, 38, .1);
+    box-shadow: none;
+    background-color: #EBF5FB ;
+     
+}
+.card {
+    font-size: 1em;
+    overflow: hidden;
+    padding: 5;
+    border: none;
+    border-radius: .28571429rem;
+    box-shadow: 0 1px 3px 0 #d4d4d5, 0 0 0 1px #d4d4d5;
+    margin-top:20px;
+}
+
+.fileGroup {
+  text-align: center;
+  margin-bottom: 5px;
+  
+}
+.col-section {
+margin-bottom: 8px;
+text-align: center;
+}
+.row .video {
+margin-top: 16px;
+margin-bottom: 16px;
+}
+.video {
+text-align: center;
+}
+h4 {
+margin-top:16px;
+text-align: center;
+}
+.carousel .control {
+	color: black;
+    font-size: 2.5em;
+}
+.carousel-indicators li {
+    border-radius: 12px;
+    width: 12px;
+    height: 12px;
+    background-color: #888;
+    opacity: 0.2;
+}
+.carousel-indicators .active {
+    background-color: red;
+    max-width: 12px;
+    margin: 0 3px;
+    height: 12px;
+    opacity: 0.2;
+}
+.print-img {
+	position: absolute;
+    z-index: 100;
+    right: 0;
+    padding: 6px;
+}
+.floating-r-button {
+	position: absolute;
+    z-index: 100;
+    right: 0;
+    display: flex;
+    padding: 6px;
+    column-gap: 6px;
+}
+.floating-r-button > .normal {
+	color: #aaa;
+}
+.floating-r-button > .active {
+	color: red;
+	text-decoration: none;
+}
+.floating-r-button > .bookmark.active > .material-icons {
+    text-shadow: 2px 2px 4px #0000006d;
+}
+.view-all {
+    position: absolute;
+    z-index: 100;
+    left: 0;
+    padding: 6px;
+}
+
+.owner-info {
+	display: inline-block;
+}
+.owner {
+	position: absolute;
+    z-index: 100;
+    left: 10px;
+    padding: 6px;
+    bottom: 10px;
+}
+.cate {
+	position: absolute;
+    z-index: 100;
+    left: 95px;
+    padding: 6px;
+    bottom: 10px;
+}
+.comment {
+	position: absolute;
+    z-index: 100;
+    right: 2px;
+    padding: 6px;
+    margin-top: 6px;
+    bottom: 0px;
+}
+.btn {
+  margin-top: auto;
+}
+.dropdown-submenu {
+  position: relative;
+}
+.dropdown-submenu a::after {
+  transform: rotate(-90deg);
+  position: absolute;
+  right: 6px;
+  top: .8em;
+}
+.dropdown-submenu .dropdown-menu {
+  top: 0;
+  left: 100%;
+  margin-left: .1rem;
+  margin-right: .1rem;
+}
+.hide-it {
+    display: none;
+}
+.dropdown-item:focus {
+	color: #000;
+}
+.dropdown-item.disabled {
+	color: #aaa !important;
+}
+.dropdown-item.active {
+	color: #FFF !important;
+}
+.carousel-title {
+    padding-top: 1em;
+    text-align: center;
+    margin: 0;
+}
+.video-material {
+    height: 300px;
+}
+
+#view-all-img {
+    position: fixed;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #cccccc75;
+    z-index: 150;
+    display: none;
+    overflow: auto;
+}
+#view-all-img > .img-holder {
+    width: 90%;
+    margin: auto;
+    background-color: #cccccc75;
+    background-color: #736d6de0;
+}
+#view-all-img > .img-holder > img {
+    width: 22%;
+    margin: 1em;
+    outline: #007bff 2px;
+}
+.mention-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #f1f1f15c;
+    display: none;
+    z-index: 200;
+}
+
+.mention-wrapper .mention-holder {
+    position: absolute;
+    margin: 3rem;
+    background-color: #fff;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-shadow: 1px 1px 9px 2px #ccc;
+    padding: 1rem;
+    overflow-y: auto;
+}
+.mention-wrapper .success {	
+    background-color: #ebfed4;
+}
+.mention-wrapper del-mention {
+    position: absolute;
+    top: 50%;
+    right: .5em;
+    transform: translateY(-50%);
+}
+
+.mention-wrapper tr {
+	position: relative;
+}
+.mention-wrapper td.del-td {
+	position: absolute;
+	right: .5em;
+}
+
+.tesis-search-box .msg {
+    background-color: #ffe2da;
+    color: red;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+.tesis-search-box input::placeholder {
+  color: red;
+  font-style: italic;
+}
+.cate:hover {
+    cursor: help;
+    background-color: #495057 !important;
+}
+
+/* 툴팁 스타일을 더 예쁘게 만들고 싶다면 */
+
+.cate:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #b1b0b0;
+    color: white;
+    padding: 5px 10px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 1000;
+    font-size: 12px;
+}
