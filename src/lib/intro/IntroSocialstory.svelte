@@ -1,13 +1,14 @@
 <script lang="ts">
 	export let apiBase = '';
-	export let recentHtml = '';
 </script>
 
 <div class="jumbotron text-center">
 	<h4>2020 서경인 프로젝트</h4>
 	<h1>그림으로 배우는 학교</h1>
 </div>
-<div class="recent-materials">{@html recentHtml}</div>
+<div class="recent-materials">
+	<slot name="recent" />
+</div>
 <div>
 	<p>
 		자폐성장애학생들에게 학교는 물리적, 사회적으로 구조화되지 못하였을 뿐 아니라 다양한 유형의 의사소통 대상이 존재하는 매우 복잡한

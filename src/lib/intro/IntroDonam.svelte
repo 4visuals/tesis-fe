@@ -1,13 +1,14 @@
 <script lang="ts">
 	export let apiBase = '';
-	export let recentHtml = '';
 </script>
 
 <div class="jumbotron text-center">
 	<h4>개별2반</h4>
 	<h1>서울돈암초등학교</h1>
 </div>
-<div class="recent-materials">{@html recentHtml}</div>
+<div class="recent-materials">
+	<slot name="recent" />
+</div>
 <div>
 	<p>[돈암초 개별2반]은 서울돈암초등학교 개별2반의 자료 모음터</p>
 </div>

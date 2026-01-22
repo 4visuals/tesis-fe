@@ -1,13 +1,14 @@
 <script lang="ts">
 	export let apiBase = '';
-	export let recentHtml = '';
 </script>
 
 <div class="jumbotron text-center">
 	<h4>특수교사를 위한</h4>
 	<h1>교수학습 지원자료</h1>
 </div>
-<div class="recent-materials">{@html recentHtml}</div>
+<div class="recent-materials">
+	<slot name="recent" />
+</div>
 <div>
 	<p>특수교사에게 꼭 필요한 자료를 어디에서나 손쉽게 볼 수 있도록 한 곳에 모읍니다.</p>
 </div>

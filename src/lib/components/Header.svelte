@@ -12,7 +12,10 @@
 	let uploadVisible = false;
 	let projectSeq: number | null = null;
 	let colLayout = 'col-4';
-	const dispatch = createEventDispatcher<{ toggleSidebar: void }>();
+	const dispatch = createEventDispatcher<{
+		toggleSidebar: void;
+		navigateProject: { projectCode: string };
+	}>();
 
 	const colClasses = [
 		'col-2',
@@ -132,8 +135,10 @@
 					<li class="nav-item">
 						<a
 							class="nav-link"
+							data-code={prj.projectCode}
 							href={`/${prj.projectCode}`}
 							class:active={prj.projectCode === projectCode}
+							on:click={() => dispatch('navigateProject', { projectCode: prj.projectCode })}
 						>
 							{prj.projectName}
 						</a>

@@ -1,13 +1,14 @@
 <script lang="ts">
 	export let apiBase = '';
-	export let recentHtml = '';
 </script>
 
 <div class="jumbotron text-center">
 	<h4>회원끼리 자료공유</h4>
 	<h1>곳간</h1>
 </div>
-<div class="recent-materials">{@html recentHtml}</div>
+<div class="recent-materials">
+	<slot name="recent" />
+</div>
 <div>
 	<p>[곳간]은 서경인 연구작업에 참여했던 연구회원들이 자료를 공유하는 곳입니다.</p>
 </div>
