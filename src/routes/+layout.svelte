@@ -1,5 +1,6 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
+	import { Modal } from '$lib/components/modal';
 </script>
 
 <svelte:head>
@@ -16,3 +17,4 @@
 </svelte:head>
 
 <slot />
+<Modal />

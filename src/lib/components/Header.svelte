@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount } from 'svelte';
+	import { modalContext } from '$lib/components/modal';
+	import CategoryEditor from '$lib/views/CategoryEditor.svelte';
 
 	type ProjectLink = { projectName: string; projectCode: string };
 
@@ -81,7 +83,17 @@
 			await checkUploadRole();
 		}
 		if (projectSeq) {
-			window.open(`${apiBase}/project/${projectSeq}`);
+			modalContext.startModal({
+				width: 'lg',
+				height: { size: 'calc(100vh - 24px)', scrollable: false },
+				padding: '0',
+				component: CategoryEditor,
+				props: {
+					projectSeq,
+					projectCode,
+					apiBase
+				}
+			});
 		} else {
 			alert('권한이 없습니다');
 		}
@@ -100,8 +112,11 @@
 		}
 		loadColLayout();
 		updateColLayout(colLayout);
-		checkUploadRole();
 	});
+
+	$: if (projectCode) {
+		checkUploadRole();
+	}
 </script>
 
 <header id="head-wrapper">

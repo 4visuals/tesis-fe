@@ -7,6 +7,7 @@
 	import MaterialCard from '$lib/components/MaterialCard.svelte';
 	import MentionViewer from '$lib/components/MentionViewer.svelte';
 	import { tesisApi } from '$lib/api';
+	import { materialViewSync } from '$lib/stores/material-view-sync';
 	import type { Bookmark, Material } from '$lib/type';
 	import IntroCloud from '$lib/intro/IntroCloud.svelte';
 	import IntroDonam from '$lib/intro/IntroDonam.svelte';
@@ -42,6 +43,7 @@
 	let showDefault = true;
 	let mentionOpen = false;
 	let mentionMaterialSeq: number | null = null;
+	let activeCategorySeq: number | null = null;
 
 	const colClasses = [
 		'col-2',
@@ -94,6 +96,7 @@
 		bookmarks = [];
 		materialsSubtitle = '';
 		showDefault = true;
+		activeCategorySeq = null;
 		await tick();
 		updateColLayout();
 		initCarousel();
@@ -120,6 +123,7 @@
 		const res = await tesisApi.getMaterialsByCate(cateSeq, { baseUrl: apiBase });
 		if (!res?.success) return;
 
+		activeCategorySeq = cateSeq;
 		materials = res.materials ?? [];
 		bookmarks = res.bookmarks ?? [];
 		materialsSubtitle = materials[0]?.category?.categoryName ?? '';
@@ -146,6 +150,21 @@
 	onMount(() => {
 		(window as typeof window & { ctxpath?: string }).ctxpath = apiBase;
 		loadSidebarData(projectCode);
+
+		const unsubscribe = materialViewSync.subscribe((payload) => {
+			if (payload.version === 0) {
+				return;
+			}
+			if (activeCategorySeq == null) {
+				return;
+			}
+			if (payload.cateSeq != null && payload.cateSeq !== activeCategorySeq) {
+				return;
+			}
+			void loadMaterials(activeCategorySeq);
+		});
+
+		return unsubscribe;
 	});
 </script>
 

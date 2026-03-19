@@ -1,4 +1,4 @@
-import type { Bookmark, Material, Mention, User } from '$lib/type';
+import type { Bookmark, Category, ContentFile, Material, Mention, Team, Thumbnail, User } from '$lib/type';
 
 type FetchOptions = {
 	baseUrl?: string;
@@ -18,17 +18,35 @@ export type ProjectPageResponse =
 	| ApiFail;
 
 export type ProjectCategoryResponse = ApiSuccess<{
-	cate: { seq: number };
+	cate: Category;
 }>;
 
 export type CategoryWithRecentResponse = ApiSuccess<{
-	cate: Record<string, unknown>;
+	cate: Category;
 	materials: Material[];
 }>;
 
 export type MaterialsByCateResponse =
 	| ApiSuccess<{ materials: Material[]; bookmarks: Bookmark[] }>
 	| ApiFail;
+
+export type EditableMaterialsResponse =
+	| ApiSuccess<{ materials: Material[] }>
+	| ApiFail;
+
+export type UserTeamsResponse = ApiSuccess<{ teams: Team[] }>;
+
+export type CategoryCreateResponse = ApiSuccess<{ cate: Category }>;
+
+export type CategoryReorderResponse = ApiSuccess<{ parent: Category }>;
+
+export type MaterialResponse = ApiSuccess<{ material: Material }>;
+
+export type AppendFilesResponse = ApiSuccess<{ files: Array<Thumbnail | ContentFile> }>;
+
+export type DeleteFileResponse = ApiSuccess<{ file: Thumbnail | ContentFile }>;
+
+export type BasicSuccessResponse = ApiSuccess<Record<string, never>> | ApiFail;
 
 export type ToggleBookmarkResponse = ApiSuccess<{ bookmarked: boolean }>;
 
@@ -47,12 +65,18 @@ export class TesisApi {
 		return `${baseUrl ?? this.defaultBaseUrl}${path}`;
 	}
 
-	private async getJson<T>(path: string, options?: FetchOptions): Promise<T> {
+	private async requestJson<T>(
+		path: string,
+		init?: RequestInit,
+		options?: FetchOptions
+	): Promise<T> {
 		const response = await fetch(this.buildUrl(path, options?.baseUrl), {
 			credentials: 'include',
 			headers: {
-				Accept: 'application/json; charset=utf-8'
-			}
+				Accept: 'application/json; charset=utf-8',
+				...(init?.headers ?? {})
+			},
+			...init
 		});
 		if (!response.ok) {
 			throw new Error(`Request failed: ${response.status}`);
@@ -60,12 +84,46 @@ export class TesisApi {
 		return response.json() as Promise<T>;
 	}
 
+	private postForm<T>(
+		path: string,
+		data: Record<string, string | number>,
+		options?: FetchOptions
+	): Promise<T> {
+		return this.requestJson<T>(
+			path,
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+				},
+				body: new URLSearchParams(
+					Object.entries(data).reduce<Record<string, string>>((acc, [key, value]) => {
+						acc[key] = String(value);
+						return acc;
+					}, {})
+				)
+			},
+			options
+		);
+	}
+
+	private postFormData<T>(path: string, body: FormData, options?: FetchOptions): Promise<T> {
+		return this.requestJson<T>(
+			path,
+			{
+				method: 'POST',
+				body
+			},
+			options
+		);
+	}
+
 	getProjectPage(projectCode: string, options?: FetchOptions): Promise<ProjectPageResponse> {
-		return this.getJson<ProjectPageResponse>(`/projectPage/${projectCode}`, options);
+		return this.requestJson<ProjectPageResponse>(`/projectPage/${projectCode}`, undefined, options);
 	}
 
 	getProjectCategory(projectSeq: number, options?: FetchOptions): Promise<ProjectCategoryResponse> {
-		return this.getJson<ProjectCategoryResponse>(`/manager/${projectSeq}/category`, options);
+		return this.requestJson<ProjectCategoryResponse>(`/manager/${projectSeq}/category`, undefined, options);
 	}
 
 	getCategoryWithRecent(
@@ -73,34 +131,42 @@ export class TesisApi {
 		projectSeq: number,
 		options?: FetchOptions
 	): Promise<CategoryWithRecentResponse> {
-		return this.getJson<CategoryWithRecentResponse>(
+		return this.requestJson<CategoryWithRecentResponse>(
 			`/manager/category/${rootSeq}/project/${projectSeq}`,
+			undefined,
 			options
 		);
 	}
 
 	getMaterialsByCate(cateSeq: number, options?: FetchOptions): Promise<MaterialsByCateResponse> {
-		return this.getJson<MaterialsByCateResponse>(`/materials/cate/${cateSeq}`, options);
+		return this.requestJson<MaterialsByCateResponse>(`/materials/cate/${cateSeq}`, undefined, options);
+	}
+
+	getEditableMaterialsByCate(
+		cateSeq: number,
+		options?: FetchOptions
+	): Promise<EditableMaterialsResponse> {
+		return this.requestJson<EditableMaterialsResponse>(
+			`/materials/cate/${cateSeq}/my`,
+			undefined,
+			options
+		);
+	}
+
+	getUserTeams(options?: FetchOptions): Promise<UserTeamsResponse> {
+		return this.requestJson<UserTeamsResponse>(`/user/teams`, undefined, options);
 	}
 
 	toggleBookmark(materialSeq: number, options?: FetchOptions): Promise<ToggleBookmarkResponse> {
-		const url = this.buildUrl(`/material/${materialSeq}/bookmark`, options?.baseUrl);
-		return fetch(url, {
-			method: 'POST',
-			credentials: 'include',
-			headers: {
-				Accept: 'application/json; charset=utf-8'
-			}
-		}).then(async (response) => {
-			if (!response.ok) {
-				throw new Error(`Request failed: ${response.status}`);
-			}
-			return (await response.json()) as ToggleBookmarkResponse;
-		});
+		return this.requestJson<ToggleBookmarkResponse>(
+			`/material/${materialSeq}/bookmark`,
+			{ method: 'POST' },
+			options
+		);
 	}
 
 	getMentions(materialSeq: number, options?: FetchOptions): Promise<MentionsResponse> {
-		return this.getJson<MentionsResponse>(`/mentions/${materialSeq}`, options);
+		return this.requestJson<MentionsResponse>(`/mentions/${materialSeq}`, undefined, options);
 	}
 
 	writeMention(
@@ -108,25 +174,14 @@ export class TesisApi {
 		mention: string,
 		options?: FetchOptions
 	): Promise<WriteMentionResponse> {
-		const url = this.buildUrl(`/mention`, options?.baseUrl);
-		const body = new URLSearchParams({
-			materialSeq: String(materialSeq),
-			mention
-		});
-		return fetch(url, {
-			method: 'POST',
-			credentials: 'include',
-			headers: {
-				Accept: 'application/json; charset=utf-8',
-				'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+		return this.postForm<WriteMentionResponse>(
+			`/mention`,
+			{
+				materialSeq,
+				mention
 			},
-			body
-		}).then(async (response) => {
-			if (!response.ok) {
-				throw new Error(`Request failed: ${response.status}`);
-			}
-			return (await response.json()) as WriteMentionResponse;
-		});
+			options
+		);
 	}
 
 	updateMention(
@@ -134,41 +189,119 @@ export class TesisApi {
 		mention: string,
 		options?: FetchOptions
 	): Promise<UpdateMentionResponse> {
-		const url = this.buildUrl(`/mention/edit`, options?.baseUrl);
-		const body = new URLSearchParams({
-			mentionSeq: String(mentionSeq),
-			mention
-		});
-		return fetch(url, {
-			method: 'POST',
-			credentials: 'include',
-			headers: {
-				Accept: 'application/json; charset=utf-8',
-				'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+		return this.postForm<UpdateMentionResponse>(
+			`/mention/edit`,
+			{
+				mentionSeq,
+				mention
 			},
-			body
-		}).then(async (response) => {
-			if (!response.ok) {
-				throw new Error(`Request failed: ${response.status}`);
-			}
-			return (await response.json()) as UpdateMentionResponse;
-		});
+			options
+		);
 	}
 
 	deleteMention(mentionSeq: number, options?: FetchOptions): Promise<DeleteMentionResponse> {
-		const url = this.buildUrl(`/mention/${mentionSeq}`, options?.baseUrl);
-		return fetch(url, {
-			method: 'DELETE',
-			credentials: 'include',
-			headers: {
-				Accept: 'application/json; charset=utf-8'
-			}
-		}).then(async (response) => {
-			if (!response.ok) {
-				throw new Error(`Request failed: ${response.status}`);
-			}
-			return (await response.json()) as DeleteMentionResponse;
-		});
+		return this.requestJson<DeleteMentionResponse>(
+			`/mention/${mentionSeq}`,
+			{ method: 'DELETE' },
+			options
+		);
+	}
+
+	createCategory(parent: number, name: string, options?: FetchOptions): Promise<CategoryCreateResponse> {
+		return this.postForm<CategoryCreateResponse>(`/manager/category`, { parent, name }, options);
+	}
+
+	renameCategory(cate: number, name: string, options?: FetchOptions): Promise<BasicSuccessResponse> {
+		return this.postForm<BasicSuccessResponse>(`/manager/category/rename`, { cate, name }, options);
+	}
+
+	deleteCategory(cate: number, options?: FetchOptions): Promise<BasicSuccessResponse> {
+		return this.postForm<BasicSuccessResponse>(`/manager/category/delete`, { cate }, options);
+	}
+
+	reorderCategory(
+		cateSeq: number,
+		dir: 'up' | 'down',
+		options?: FetchOptions
+	): Promise<CategoryReorderResponse> {
+		return this.requestJson<CategoryReorderResponse>(
+			`/manager/category/${cateSeq}/${dir}`,
+			{ method: 'PUT' },
+			options
+		);
+	}
+
+	uploadMaterial(
+		title: string,
+		cate: number,
+		thumnails: File[],
+		contents: File[],
+		options?: FetchOptions
+	): Promise<BasicSuccessResponse> {
+		const form = new FormData();
+		form.append('title', title);
+		form.append('cate', String(cate));
+		thumnails.forEach((file) => form.append('thumnails', file));
+		contents.forEach((file) => form.append('contents', file));
+		return this.postFormData<BasicSuccessResponse>(`/manager/material/up`, form, options);
+	}
+
+	uploadVideo(
+		title: string,
+		cate: number,
+		videoUrl: string,
+		options?: FetchOptions
+	): Promise<MaterialResponse> {
+		return this.postForm<MaterialResponse>(`/manager/material/up/video`, { title, cate, videoUrl }, options);
+	}
+
+	updateMaterial(
+		mSeq: number,
+		prop: string,
+		value: string | number,
+		options?: FetchOptions
+	): Promise<MaterialResponse> {
+		return this.postForm<MaterialResponse>(`/manager/material/edit`, { mSeq, prop, value }, options);
+	}
+
+	deleteUpfile(fileSeq: number, options?: FetchOptions): Promise<DeleteFileResponse> {
+		return this.postForm<DeleteFileResponse>(`/manager/upfile/delete`, { fileSeq }, options);
+	}
+
+	appendMaterialFiles(
+		mseq: number,
+		files: File[],
+		options?: FetchOptions
+	): Promise<AppendFilesResponse> {
+		const form = new FormData();
+		files.forEach((file) => form.append('files', file));
+		return this.postFormData<AppendFilesResponse>(`/manager/material/${mseq}/files`, form, options);
+	}
+
+	deleteMaterial(mSeq: number, options?: FetchOptions): Promise<MaterialResponse> {
+		return this.postForm<MaterialResponse>(`/manager/material/del`, { mSeq }, options);
+	}
+
+	reorderMaterialThumbnails(
+		mSeq: number,
+		start: number,
+		end: number,
+		options?: FetchOptions
+	): Promise<MaterialResponse> {
+		return this.postForm<MaterialResponse>(`/manager/material/${mSeq}/ordering`, { start, end }, options);
+	}
+
+	reorderCategoryMaterials(
+		cateSeq: number,
+		srcOrder: number,
+		dstOrder: number,
+		options?: FetchOptions
+	): Promise<BasicSuccessResponse> {
+		return this.postForm<BasicSuccessResponse>(
+			`/manager/category/${cateSeq}/ordering`,
+			{ srcOrder, dstOrder },
+			options
+		);
 	}
 }
 
