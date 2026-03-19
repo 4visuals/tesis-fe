@@ -1,29 +1,51 @@
 <script lang="ts">
 	import type { Material, Thumbnail } from '$lib/type';
 
+	export let mode: 'edit' | 'insert' = 'edit';
 	export let material: Material;
 	export let orderOptions: number[] = [];
 	export let videoDraft = '';
-	export let onSaveTitle: (material: Material) => void;
-	export let onVideoDraftInput: (materialSeq: number, value: string) => void;
-	export let onSaveVideoUrl: (material: Material) => void;
-	export let onDeleteUpfile: (fileSeq: number) => void;
-	export let onAppendFiles: (materialSeq: number, files: File[]) => void;
-	export let onDeleteMaterial: (materialSeq: number) => void;
-	export let onThumbnailOrder: (material: Material, thumbnail: Thumbnail, dir: 'up' | 'down') => void;
-	export let onMaterialOrder: (material: Material, value: number) => void;
+	export let onSaveTitle: ((material: Material) => void) | undefined = undefined;
+	export let onVideoDraftInput: ((materialSeq: number, value: string) => void) | undefined = undefined;
+	export let onSaveVideoUrl: ((material: Material) => void) | undefined = undefined;
+	export let onDeleteUpfile: ((fileSeq: number) => void) | undefined = undefined;
+	export let onAppendFiles: ((materialSeq: number, files: File[]) => void) | undefined = undefined;
+	export let onDeleteMaterial: ((materialSeq: number) => void) | undefined = undefined;
+	export let onThumbnailOrder:
+		| ((material: Material, thumbnail: Thumbnail, dir: 'up' | 'down') => void)
+		| undefined = undefined;
+	export let onMaterialOrder: ((material: Material, value: number) => void) | undefined = undefined;
+	export let onDraftTitleInput:
+		| ((materialSeq: number, value: string) => void)
+		| undefined = undefined;
+	export let onDraftDeleteFile:
+		| ((materialSeq: number, fileSeq: number, target: 'thumbnail' | 'content') => void)
+		| undefined = undefined;
+	export let onDraftAppendFiles:
+		| ((materialSeq: number, files: File[]) => void)
+		| undefined = undefined;
+	export let onDraftUpload: ((materialSeq: number) => void) | undefined = undefined;
+	export let onDraftRemove: ((materialSeq: number) => void) | undefined = undefined;
+	export let onDraftThumbnailOrder:
+		| ((materialSeq: number, thumbnailSeq: number, dir: 'up' | 'down') => void)
+		| undefined = undefined;
 
 	const isVideoOnly = () =>
 		material.thumnails.length === 0 &&
 		material.contents.length === 1 &&
 		material.contents[0].type === 'VIDEO';
 
+	const thumbnailSrc = (thumbnail: Thumbnail) =>
+		mode === 'insert'
+			? thumbnail.generatedPath
+			: `https://kr.object.ncloudstorage.com/tesis/${thumbnail.generatedPath}`;
+
 	const handleMaterialOrderChange = (event: Event) => {
 		const target = event.currentTarget as HTMLSelectElement | null;
 		if (!target) {
 			return;
 		}
-		onMaterialOrder(material, Number(target.value));
+		onMaterialOrder?.(material, Number(target.value));
 	};
 
 	const handleAppendFilesChange = (event: Event) => {
@@ -35,7 +57,11 @@
 		if (files.length === 0) {
 			return;
 		}
-		onAppendFiles(material.seq, files);
+		if (mode === 'insert') {
+			onDraftAppendFiles?.(Number(material.seq), files);
+		} else {
+			onAppendFiles?.(Number(material.seq), files);
+		}
 		target.value = '';
 	};
 
@@ -44,28 +70,52 @@
 		if (!target) {
 			return;
 		}
-		onVideoDraftInput(material.seq, target.value);
+		onVideoDraftInput?.(Number(material.seq), target.value);
+	};
+
+	const handleTitleInput = (event: Event) => {
+		const target = event.currentTarget as HTMLInputElement | null;
+		if (!target) {
+			return;
+		}
+		material.title = target.value;
+		if (mode === 'insert') {
+			onDraftTitleInput?.(Number(material.seq), target.value);
+		}
 	};
 </script>
 
 <article class="material-card">
 	<div class="material-head">
 		<div class="title-row">
-			<input class="form-control" bind:value={material.title} />
-			<button type="button" class="btn btn-sm btn-secondary" on:click={() => onSaveTitle(material)}>
-				제목수정
-			</button>
+			<input class="form-control" value={material.title} on:input={handleTitleInput} />
+			{#if mode === 'edit'}
+				<button type="button" class="btn btn-sm btn-secondary" on:click={() => onSaveTitle?.(material)}>
+					제목수정
+				</button>
+			{/if}
 		</div>
-		<div class="order-row">
-			<select class="form-control" value={material.orderNum} on:change={handleMaterialOrderChange}>
-				{#each orderOptions as order}
-					<option value={order}>{order}</option>
-				{/each}
-			</select>
-			<button type="button" class="btn btn-sm btn-danger" on:click={() => onDeleteMaterial(material.seq)}>
-				삭제
-			</button>
-		</div>
+		{#if mode === 'edit'}
+			<div class="order-row">
+				<select class="form-control" value={material.orderNum} on:change={handleMaterialOrderChange}>
+					{#each orderOptions as order}
+						<option value={order}>{order}</option>
+					{/each}
+				</select>
+				<button type="button" class="btn btn-sm btn-danger" on:click={() => onDeleteMaterial?.(Number(material.seq))}>
+					삭제
+				</button>
+			</div>
+		{:else}
+			<div class="insert-actions">
+				<button type="button" class="btn btn-sm btn-primary" on:click={() => onDraftUpload?.(Number(material.seq))}>
+					업로드
+				</button>
+				<button type="button" class="btn btn-sm btn-outline-danger" on:click={() => onDraftRemove?.(Number(material.seq))}>
+					제거
+				</button>
+			</div>
+		{/if}
 	</div>
 
 	{#if material.thumnails.length > 0}
@@ -74,31 +124,37 @@
 			<div class="thumb-grid">
 				{#each material.thumnails as thumbnail (thumbnail.seq)}
 					<div class="thumb-card">
-						<img
-							src={`https://kr.object.ncloudstorage.com/tesis/${thumbnail.generatedPath}`}
-							alt={thumbnail.originFileName}
-						/>
+						<img src={thumbnailSrc(thumbnail)} alt={thumbnail.originFileName} />
 						<div class="thumb-actions">
 							<span>{thumbnail.originFileName}</span>
 							<div>
 								<button
 									type="button"
 									class="btn btn-sm btn-light"
-									on:click={() => onThumbnailOrder(material, thumbnail, 'up')}
+									on:click={() =>
+										mode === 'insert'
+											? onDraftThumbnailOrder?.(Number(material.seq), Number(thumbnail.seq), 'up')
+											: onThumbnailOrder?.(material, thumbnail, 'up')}
 								>
 									▲
 								</button>
 								<button
 									type="button"
 									class="btn btn-sm btn-light"
-									on:click={() => onThumbnailOrder(material, thumbnail, 'down')}
+									on:click={() =>
+										mode === 'insert'
+											? onDraftThumbnailOrder?.(Number(material.seq), Number(thumbnail.seq), 'down')
+											: onThumbnailOrder?.(material, thumbnail, 'down')}
 								>
 									▼
 								</button>
 								<button
 									type="button"
 									class="btn btn-sm btn-outline-danger"
-									on:click={() => onDeleteUpfile(thumbnail.seq)}
+									on:click={() =>
+										mode === 'insert'
+											? onDraftDeleteFile?.(Number(material.seq), Number(thumbnail.seq), 'thumbnail')
+											: onDeleteUpfile?.(Number(thumbnail.seq))}
 								>
 									삭제
 								</button>
@@ -116,7 +172,14 @@
 			{#each material.contents as file (file.seq)}
 				<li>
 					<span>{file.originFileName}</span>
-					<button type="button" class="btn btn-sm btn-outline-danger" on:click={() => onDeleteUpfile(file.seq)}>
+					<button
+						type="button"
+						class="btn btn-sm btn-outline-danger"
+						on:click={() =>
+							mode === 'insert'
+								? onDraftDeleteFile?.(Number(material.seq), Number(file.seq), 'content')
+								: onDeleteUpfile?.(Number(file.seq))}
+					>
 						삭제
 					</button>
 				</li>
@@ -129,7 +192,7 @@
 			<h4>동영상 URL</h4>
 			<div class="title-row">
 				<input class="form-control" value={videoDraft} on:input={handleVideoDraftChange} />
-				<button type="button" class="btn btn-sm btn-secondary" on:click={() => onSaveVideoUrl(material)}>
+				<button type="button" class="btn btn-sm btn-secondary" on:click={() => onSaveVideoUrl?.(material)}>
 					URL수정
 				</button>
 			</div>
@@ -176,6 +239,11 @@
 		select {
 			width: 90px;
 		}
+	}
+
+	.insert-actions {
+		display: flex;
+		gap: 8px;
 	}
 
 	.asset-block {

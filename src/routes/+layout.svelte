@@ -11,6 +11,7 @@
 	<link rel="stylesheet" href="/css/common.css" />
 	<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
 	<script src="https://kit.fontawesome.com/ee2ae3520a.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.min.js" defer></script>
 	<script src="/js/jquery-3.6.0.min.js" defer></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js" defer></script>
 	<script src="/js/bootstrap.js" defer></script>

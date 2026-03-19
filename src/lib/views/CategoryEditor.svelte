@@ -21,12 +21,20 @@
 		contents: ContentFile[];
 	};
 
+	type UploadDraft = {
+		id: number;
+		material: EditorMaterial;
+		thumbnailFiles: File[];
+		contentFiles: File[];
+	};
+
 	type TabKey = 'files' | 'videos' | 'edit';
 
 	let rootCategory: EditorCategory | null = null;
 	let selectedSeq: number | null = null;
 	let activeTab: TabKey = 'files';
 	let materials: EditorMaterial[] = [];
+	let pendingMaterials: UploadDraft[] = [];
 	let videoDrafts: Record<number, string> = {};
 	let loadingTree = true;
 	let loadingMaterials = false;
@@ -34,13 +42,27 @@
 	let error = '';
 	let notice = '';
 	let selectedPath = '카테고리를 선택하세요.';
-
-	let fileTitle = '';
-	let uploadThumnails: File[] = [];
-	let uploadContents: File[] = [];
-	let uploadPayload: { thumnails: File[]; contents: File[] } = { thumnails: [], contents: [] };
+	let currentCategory: EditorCategory | null = null;
 	let videoTitle = '';
 	let videoUrl = '';
+	let dropActive = false;
+	let localSeq = -1;
+
+	type PdfJsPage = {
+		getViewport: (params: { scale: number }) => { width: number; height: number };
+		render: (params: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }) => {
+			promise: Promise<void>;
+		};
+	};
+
+	type PdfJsDocument = {
+		getPage: (pageNumber: number) => Promise<PdfJsPage>;
+	};
+
+	type PdfJsLib = {
+		GlobalWorkerOptions: { workerSrc: string };
+		getDocument: (data: Uint8Array) => { promise: Promise<PdfJsDocument> };
+	};
 
 	const isLeaf = (category: EditorCategory | null) =>
 		!category || (category.sub?.length ?? 0) === 0;
@@ -51,11 +73,6 @@
 		selectable: category.selectable ?? false,
 		sub: (category.sub ?? []).map((child) => normalizeCategory(child, category.seq))
 	});
-
-	const walkCategories = (category: EditorCategory, callback: (value: EditorCategory) => void) => {
-		callback(category);
-		(category.sub ?? []).forEach((child) => walkCategories(child, callback));
-	};
 
 	const findCategory = (
 		category: EditorCategory | null,
@@ -111,19 +128,6 @@
 		setSelectable(target, true);
 	};
 
-	const firstSelectableLeaf = (category: EditorCategory): EditorCategory | null => {
-		if (category.selectable !== false && isLeaf(category)) {
-			return category;
-		}
-		for (const child of category.sub ?? []) {
-			const found = firstSelectableLeaf(child);
-			if (found) {
-				return found;
-			}
-		}
-		return category.selectable !== false ? category : null;
-	};
-
 	const toVideoDraft = (material: EditorMaterial) => {
 		const source = material.contents[0]?.generatedPath ?? '';
 		if (!source) {
@@ -132,30 +136,69 @@
 		return source.startsWith('http') ? source : `https://www.youtube.com/embed/${source}`;
 	};
 
-	const selectedCategory = () => findCategory(rootCategory, selectedSeq);
+	const selectedCategory = () => currentCategory;
 
 	const orderOptions = () => materials.map((material) => material.orderNum ?? 0);
+	const nextLocalSeq = () => localSeq--;
 
 	const isImageFile = (file: File) => file.type.startsWith('image/');
+	const isPdfFile = (file: File) =>
+		file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-	const classifyUploadFiles = () => {
-		const thumnails = [...uploadThumnails];
-		const contents: File[] = [];
-
-		for (const file of uploadContents) {
-			if (isImageFile(file)) {
-				thumnails.push(file);
-			} else {
-				contents.push(file);
-			}
+	const getPdfJsLib = () => {
+		const lib = (window as typeof window & { pdfjsLib?: PdfJsLib }).pdfjsLib;
+		if (!lib) {
+			throw new Error('PDF 라이브러리를 불러오지 못했습니다.');
 		}
-
-		return { thumnails, contents };
+		lib.GlobalWorkerOptions.workerSrc =
+			'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.10.111/pdf.worker.min.js';
+		return lib;
 	};
 
-	const syncUploadPayload = () => {
-		uploadPayload = classifyUploadFiles();
+	const blobToFile = (blob: Blob, name: string) =>
+		new File([blob], name, {
+			type: blob.type || 'image/jpeg'
+		});
+
+	const canvasToJpegBlob = (canvas: HTMLCanvasElement) =>
+		new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob(
+				(blob) => {
+					if (!blob) {
+						reject(new Error('PDF 썸네일 생성에 실패했습니다.'));
+						return;
+					}
+					resolve(blob);
+				},
+				'image/jpeg',
+				1
+			);
+		});
+
+	const pdfToThumbnailFile = async (file: File) => {
+		const pdfjsLib = getPdfJsLib();
+		const buffer = await file.arrayBuffer();
+		const pdf = await pdfjsLib.getDocument(new Uint8Array(buffer)).promise;
+		const page = await pdf.getPage(1);
+		const viewport = page.getViewport({ scale: 1.5 });
+		const canvas = document.createElement('canvas');
+		const context = canvas.getContext('2d');
+		if (!context) {
+			throw new Error('PDF 썸네일 캔버스를 생성하지 못했습니다.');
+		}
+		canvas.width = viewport.width;
+		canvas.height = viewport.height;
+		await page.render({
+			canvasContext: context,
+			viewport
+		}).promise;
+		const blob = await canvasToJpegBlob(canvas);
+		return blobToFile(blob, `${file.name}.jpg`);
 	};
+
+	$: {
+		currentCategory = findCategory(rootCategory, selectedSeq);
+	}
 
 	$: {
 		if (!rootCategory || selectedSeq == null) {
@@ -220,7 +263,7 @@
 			}
 			rootCategory = root;
 			const preserved = findCategory(root, preferredSeq);
-			selectedSeq = preserved?.seq ?? firstSelectableLeaf(root)?.seq ?? root.seq;
+			selectedSeq = preserved?.seq ?? null;
 		} catch (err) {
 			error = err instanceof Error ? err.message : '카테고리를 불러오지 못했습니다.';
 		} finally {
@@ -230,6 +273,7 @@
 
 	const handleSelectCategory = (category: Category) => {
 		selectedSeq = category.seq;
+		currentCategory = findCategory(rootCategory, category.seq);
 		if (activeTab === 'edit') {
 			void refreshMaterials(category.seq);
 		}
@@ -246,6 +290,262 @@
 
 	const syncMaterialView = (cateSeq = selectedSeq) => {
 		materialViewSync.notify(cateSeq ?? null);
+	};
+
+	const makeThumbnailPreview = (file: File): Thumbnail => ({
+		seq: nextLocalSeq(),
+		generatedPath: URL.createObjectURL(file),
+		originFileName: file.name,
+		orderNum: 0
+	});
+
+	const makeContentPreview = (file: File): ContentFile => ({
+		seq: nextLocalSeq(),
+		generatedPath: '',
+		originFileName: file.name,
+		type: isPdfFile(file) ? 'FILE' : file.type || 'FILE',
+		orderNum: 0
+	});
+
+	const refreshLocalOrders = (draft: UploadDraft): UploadDraft => ({
+		...draft,
+		material: {
+			...draft.material,
+			thumnails: draft.material.thumnails.map((thumbnail, index) => ({
+				...thumbnail,
+				orderNum: index
+			})),
+			contents: draft.material.contents.map((content, index) => ({
+				...content,
+				orderNum: index
+			}))
+		}
+	});
+
+	const revokeBlobUrl = (value: string) => {
+		if (value.startsWith('blob:')) {
+			URL.revokeObjectURL(value);
+		}
+	};
+
+	const destroyDraft = (draft: UploadDraft) => {
+		draft.material.thumnails.forEach((thumbnail) => revokeBlobUrl(thumbnail.generatedPath));
+	};
+
+	const buildDraftFiles = async (files: File[]) => {
+		const thumbnailFiles: File[] = [];
+		const contentFiles: File[] = [];
+		const thumnails: Thumbnail[] = [];
+		const contents: ContentFile[] = [];
+
+		for (const file of files) {
+			if (isImageFile(file)) {
+				thumbnailFiles.push(file);
+				thumnails.push(makeThumbnailPreview(file));
+				continue;
+			}
+
+			contentFiles.push(file);
+			contents.push(makeContentPreview(file));
+
+			if (isPdfFile(file)) {
+				const pdfThumbnail = await pdfToThumbnailFile(file);
+				thumbnailFiles.push(pdfThumbnail);
+				thumnails.push(makeThumbnailPreview(pdfThumbnail));
+			}
+		}
+
+		return {
+			thumbnailFiles,
+			contentFiles,
+			thumnails,
+			contents
+		};
+	};
+
+	const appendDraft = async (files: File[]) => {
+		const current = requireSelectedCategory();
+		if (!current) {
+			return;
+		}
+		if (!isLeaf(current)) {
+			alert('자료 등록용 카테고리를 선택하세요.');
+			return;
+		}
+		if (files.length === 0) {
+			return;
+		}
+
+		const built = await buildDraftFiles(files);
+		if (built.thumbnailFiles.length === 0 && built.contentFiles.length === 0) {
+			return;
+		}
+
+		const draftId = nextLocalSeq();
+		pendingMaterials = [
+			...pendingMaterials,
+			refreshLocalOrders({
+				id: draftId,
+				thumbnailFiles: built.thumbnailFiles,
+				contentFiles: built.contentFiles,
+				material: {
+					seq: draftId,
+					title: 'no title',
+					thumnails: built.thumnails,
+					contents: built.contents,
+					category: current,
+					owner: { userName: '' },
+					orderNum: pendingMaterials.length
+				}
+			})
+		];
+	};
+
+	const updateDraft = (draftId: number, updater: (draft: UploadDraft) => UploadDraft) => {
+		pendingMaterials = pendingMaterials.map((draft) =>
+			draft.id === draftId ? refreshLocalOrders(updater(draft)) : draft
+		);
+	};
+
+	const handleDraftDrop = async (event: DragEvent) => {
+		event.preventDefault();
+		dropActive = false;
+		const files = Array.from(event.dataTransfer?.files ?? []);
+		try {
+			await appendDraft(files);
+		} catch (err) {
+			error = err instanceof Error ? err.message : '파일을 준비하지 못했습니다.';
+		}
+	};
+
+	const handleDraftTitleInput = (draftId: number, value: string) => {
+		updateDraft(draftId, (draft) => ({
+			...draft,
+			material: {
+				...draft.material,
+				title: value
+			}
+		}));
+	};
+
+	const handleDraftAppendFiles = async (draftId: number, files: File[]) => {
+		if (files.length === 0) {
+			return;
+		}
+		const built = await buildDraftFiles(files);
+		updateDraft(draftId, (draft) => ({
+			...draft,
+			thumbnailFiles: [...draft.thumbnailFiles, ...built.thumbnailFiles],
+			contentFiles: [...draft.contentFiles, ...built.contentFiles],
+			material: {
+				...draft.material,
+				thumnails: [...draft.material.thumnails, ...built.thumnails],
+				contents: [...draft.material.contents, ...built.contents]
+			}
+		}));
+	};
+
+	const handleDraftDeleteFile = (draftId: number, fileSeq: number, target: 'thumbnail' | 'content') => {
+		updateDraft(draftId, (draft) => {
+			if (target === 'thumbnail') {
+				const thumbnail = draft.material.thumnails.find((item) => item.seq === fileSeq);
+				if (thumbnail) {
+					revokeBlobUrl(thumbnail.generatedPath);
+				}
+				const thumbnailIndex = draft.material.thumnails.findIndex((item) => item.seq === fileSeq);
+				return {
+					...draft,
+					thumbnailFiles: draft.thumbnailFiles.filter((_, index) => index !== thumbnailIndex),
+					material: {
+						...draft.material,
+						thumnails: draft.material.thumnails.filter((item) => item.seq !== fileSeq)
+					}
+				};
+			}
+
+			const contentIndex = draft.material.contents.findIndex((item) => item.seq === fileSeq);
+			return {
+				...draft,
+				contentFiles: draft.contentFiles.filter((_, index) => index !== contentIndex),
+				material: {
+					...draft.material,
+					contents: draft.material.contents.filter((item) => item.seq !== fileSeq)
+				}
+			};
+		});
+	};
+
+	const handleDraftThumbnailOrder = (
+		draftId: number,
+		thumbnailSeq: number,
+		dir: 'up' | 'down'
+	) => {
+		updateDraft(draftId, (draft) => {
+			const index = draft.material.thumnails.findIndex((thumbnail) => thumbnail.seq === thumbnailSeq);
+			const nextIndex = dir === 'up' ? index - 1 : index + 1;
+			if (index < 0 || nextIndex < 0 || nextIndex >= draft.material.thumnails.length) {
+				return draft;
+			}
+
+			const nextThumnails = [...draft.material.thumnails];
+			const nextThumbnailFiles = [...draft.thumbnailFiles];
+			[nextThumnails[index], nextThumnails[nextIndex]] = [nextThumnails[nextIndex], nextThumnails[index]];
+			[nextThumbnailFiles[index], nextThumbnailFiles[nextIndex]] = [
+				nextThumbnailFiles[nextIndex],
+				nextThumbnailFiles[index]
+			];
+
+			return {
+				...draft,
+				thumbnailFiles: nextThumbnailFiles,
+				material: {
+					...draft.material,
+					thumnails: nextThumnails
+				}
+			};
+		});
+	};
+
+	const handleDraftRemove = (draftId: number) => {
+		const draft = pendingMaterials.find((item) => item.id === draftId);
+		if (draft) {
+			destroyDraft(draft);
+		}
+		pendingMaterials = pendingMaterials.filter((draft) => draft.id !== draftId);
+	};
+
+	const handleDraftUpload = async (draftId: number) => {
+		const draft = pendingMaterials.find((item) => item.id === draftId);
+		if (!draft) {
+			return;
+		}
+		if (!draft.material.title.trim()) {
+			alert('자료 제목을 입력하세요.');
+			return;
+		}
+		if (draft.thumbnailFiles.length === 0 && draft.contentFiles.length === 0) {
+			alert('업로드할 파일이 없습니다.');
+			return;
+		}
+
+		submitting = true;
+		try {
+			await tesisApi.uploadMaterial(
+				draft.material.title.trim(),
+				draft.material.category.seq,
+				draft.thumbnailFiles,
+				draft.contentFiles,
+				{ baseUrl: apiBase }
+			);
+			destroyDraft(draft);
+			pendingMaterials = pendingMaterials.filter((item) => item.id !== draftId);
+			syncMaterialView(draft.material.category.seq);
+			withNotice('파일 자료를 업로드했습니다.');
+		} catch (err) {
+			error = err instanceof Error ? err.message : '파일 업로드에 실패했습니다.';
+		} finally {
+			submitting = false;
+		}
 	};
 
 	const requireSelectedCategory = () => {
@@ -312,63 +612,6 @@
 		withNotice('카테고리 순서를 변경했습니다.');
 	};
 
-	const handleFileInput = (event: Event, target: 'thumbs' | 'contents') => {
-		const files = Array.from((event.currentTarget as HTMLInputElement).files ?? []);
-		if (target === 'thumbs') {
-			uploadThumnails = files;
-		} else {
-			uploadContents = files;
-		}
-		syncUploadPayload();
-	};
-
-	const resetUploadFields = () => {
-		fileTitle = '';
-		uploadThumnails = [];
-		uploadContents = [];
-		uploadPayload = { thumnails: [], contents: [] };
-		videoTitle = '';
-		videoUrl = '';
-	};
-
-	const handleUploadFiles = async () => {
-		const current = requireSelectedCategory();
-		if (!current) {
-			return;
-		}
-		if (!isLeaf(current)) {
-			alert('자료 등록용 카테고리를 선택하세요.');
-			return;
-		}
-		if (!fileTitle.trim()) {
-			alert('자료 제목을 입력하세요.');
-			return;
-		}
-		if (uploadPayload.thumnails.length === 0 && uploadPayload.contents.length === 0) {
-			alert('업로드할 파일을 선택하세요.');
-			return;
-		}
-		submitting = true;
-		try {
-			await tesisApi.uploadMaterial(
-				fileTitle.trim(),
-				current.seq,
-				uploadPayload.thumnails,
-				uploadPayload.contents,
-				{ baseUrl: apiBase }
-			);
-			resetUploadFields();
-			activeTab = 'edit';
-			await refreshMaterials(current.seq);
-			syncMaterialView(current.seq);
-			withNotice('파일 자료를 업로드했습니다.');
-		} catch (err) {
-			error = err instanceof Error ? err.message : '파일 업로드에 실패했습니다.';
-		} finally {
-			submitting = false;
-		}
-	};
-
 	const handleUploadVideo = async () => {
 		const current = requireSelectedCategory();
 		if (!current) {
@@ -387,7 +630,8 @@
 			await tesisApi.uploadVideo(videoTitle.trim(), current.seq, videoUrl.trim(), {
 				baseUrl: apiBase
 			});
-			resetUploadFields();
+			videoTitle = '';
+			videoUrl = '';
 			activeTab = 'edit';
 			await refreshMaterials(current.seq);
 			syncMaterialView(current.seq);
@@ -489,9 +733,11 @@
 		}
 	};
 
-	onMount(async () => {
-		syncUploadPayload();
-		await refreshTree();
+	onMount(() => {
+		void refreshTree();
+		return () => {
+			pendingMaterials.forEach((draft) => destroyDraft(draft));
+		};
 	});
 </script>
 
@@ -561,65 +807,71 @@
 				<h3>{selectedPath}</h3>
 			</div>
 
-			<nav class="tab-nav">
-				<button
-					type="button"
-					class:active={activeTab === 'files'}
-					on:click={() => switchTab('files')}>파일자료</button
-				>
-				<button
-					type="button"
-					class:active={activeTab === 'videos'}
-					on:click={() => switchTab('videos')}>동영상자료</button
-				>
-				<button type="button" class:active={activeTab === 'edit'} on:click={() => switchTab('edit')}
-					>자료편집</button
-				>
-			</nav>
-
-			{#if activeTab === 'files'}
-				<div class="panel">
-					<h3>파일 자료 업로드</h3>
-					<p class="helper">
-						업로드 대상 카테고리: <strong>{selectedCategory()?.categoryName ?? '선택 없음'}</strong>
-					</p>
-					<div class="form-grid">
-						<label>
-							<span>자료 제목</span>
-							<input class="form-control" bind:value={fileTitle} placeholder="자료 제목" />
-						</label>
-						<label>
-							<span>썸네일 파일</span>
-							<input type="file" multiple on:change={(event) => handleFileInput(event, 'thumbs')} />
-						</label>
-						<label>
-							<span>콘텐츠 파일</span>
-							<input
-								type="file"
-								multiple
-								on:change={(event) => handleFileInput(event, 'contents')}
-							/>
-						</label>
-					</div>
-					<div class="file-summary">
-						<p>썸네일 {uploadPayload.thumnails.length}개</p>
-						<p>콘텐츠 {uploadPayload.contents.length}개</p>
-						<p>이미지 파일은 레거시처럼 자동으로 썸네일로 분류됩니다.</p>
-					</div>
+			{#if !currentCategory}
+				<div class="panel empty-panel">
+					<p class="empty">왼쪽 트리에서 카테고리를 선택하세요.</p>
+				</div>
+			{:else}
+				<nav class="tab-nav">
 					<button
 						type="button"
-						class="btn btn-primary"
-						disabled={submitting}
-						on:click={handleUploadFiles}
+						class:active={activeTab === 'files'}
+						on:click={() => switchTab('files')}>파일자료</button
 					>
-						업로드
-					</button>
-				</div>
-			{:else if activeTab === 'videos'}
+					<button
+						type="button"
+						class:active={activeTab === 'videos'}
+						on:click={() => switchTab('videos')}>동영상자료</button
+					>
+					<button
+						type="button"
+						class:active={activeTab === 'edit'}
+						on:click={() => switchTab('edit')}>자료편집</button
+					>
+				</nav>
+
+				{#if activeTab === 'files'}
+					<div class="panel">
+						<h3>파일 자료 준비</h3>
+						<p class="helper">
+							업로드 대상 카테고리: <strong>{currentCategory?.categoryName ?? '선택 없음'}</strong>
+						</p>
+						<div
+							class="drop-zone"
+							class:active={dropActive}
+							on:dragenter|preventDefault={() => (dropActive = true)}
+							on:dragover|preventDefault={() => (dropActive = true)}
+							on:dragleave|preventDefault={() => (dropActive = false)}
+							on:drop={handleDraftDrop}
+						>
+							<p>파일을 여기로 드롭해서 업로드 대기 Material을 만드세요.</p>
+							<p>한 번 드롭한 파일 묶음은 Material 하나로 준비됩니다.</p>
+							<p>이미지는 자동으로 썸네일로 분류되고, PDF는 첫 페이지가 썸네일로 추가됩니다.</p>
+						</div>
+						{#if pendingMaterials.length === 0}
+							<p class="empty">드롭한 파일이 없습니다.</p>
+						{:else}
+							<div class="material-list">
+								{#each pendingMaterials as draft (draft.id)}
+									<MaterialCardEditor
+										mode="insert"
+										material={draft.material}
+										onDraftTitleInput={handleDraftTitleInput}
+										onDraftDeleteFile={handleDraftDeleteFile}
+										onDraftAppendFiles={handleDraftAppendFiles}
+										onDraftUpload={handleDraftUpload}
+										onDraftRemove={handleDraftRemove}
+										onDraftThumbnailOrder={handleDraftThumbnailOrder}
+									/>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{:else if activeTab === 'videos'}
 				<div class="panel">
 					<h3>동영상 등록</h3>
 					<p class="helper">
-						등록 대상 카테고리: <strong>{selectedCategory()?.categoryName ?? '선택 없음'}</strong>
+						등록 대상 카테고리: <strong>{currentCategory?.categoryName ?? '선택 없음'}</strong>
 					</p>
 					<div class="form-grid">
 						<label>
@@ -640,8 +892,8 @@
 						등록
 					</button>
 				</div>
-			{:else}
-				<div class="panel">
+				{:else}
+					<div class="panel">
 					<div class="panel-head">
 						<button
 							type="button"
@@ -675,7 +927,8 @@
 							{/each}
 						</div>
 					{/if}
-				</div>
+					</div>
+				{/if}
 			{/if}
 		</section>
 	</div>
@@ -823,6 +1076,13 @@
 		overflow-x: hidden;
 	}
 
+	.empty-panel {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 320px;
+	}
+
 	.form-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -840,6 +1100,37 @@
 	.helper {
 		margin: 0;
 		color: #475569;
+	}
+
+	.drop-zone {
+		display: grid;
+		place-items: center;
+		gap: 8px;
+		min-height: 180px;
+		padding: 28px;
+		border: 2px dashed rgba(15, 118, 110, 0.35);
+		border-radius: 22px;
+		background:
+			radial-gradient(circle at top, rgba(15, 118, 110, 0.08), transparent 44%),
+			#f8fafc;
+		text-align: center;
+		transition:
+			border-color 120ms ease,
+			background-color 120ms ease,
+			transform 120ms ease;
+
+		p {
+			margin: 0;
+			color: #475569;
+		}
+
+		&.active {
+			border-color: #0f766e;
+			background:
+				radial-gradient(circle at top, rgba(15, 118, 110, 0.16), transparent 48%),
+				#ecfeff;
+			transform: scale(0.995);
+		}
 	}
 
 	.panel-head {
